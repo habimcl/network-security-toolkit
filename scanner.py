@@ -7,13 +7,14 @@ import csv
 
 # Variables globales
 open_ports_info = [] #stockera des (port, bannière)
+
 # Verrou pour sécuriser l'écriture dans la liste open_ports.
 list_lock = threading.Lock()
 
 def check_port(ip,port):
-    """ Tente de se connecter à une IP sur un port donné.
+    """ 
+    Tente de se connecter à une IP sur un port donné.
     Renvoie True si le port est ouvert, False sinon.
-    Note : Cette fonction est maintenant silencieuse.
     """
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.settimeout(1.0)
@@ -80,6 +81,12 @@ def worker(queue, ip):
         queue.task_done()
 
 def main():
+    """
+    Fonction principale du script.
+    Analyse les arguments de la ligne de commande (IP, ports, threads),
+    initialise la file d'attente, lance les threads de scan
+    et sauvegarde les résultats dans un fichier CSV.
+    """
     parser = argparse.ArgumentParser(description="Scanner de ports simple et rapide")
 
     parser.add_argument("ip", type=str, help="L'adresse IP cible à scanner")
