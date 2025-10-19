@@ -1,5 +1,6 @@
 import socket
 import sys
+import argparse #biibliothèque pour la CLI
 
 def check_port(ip, port):
     """
@@ -30,20 +31,35 @@ def check_port(ip, port):
         # Ferme toujours le socket
         sock.close()
 
-# --- Section de Test ---
+def main(): # Configuration de l'analyseur d'arguments
+    parser = argparse.ArgumentParser(description="Scanner de ports simple")
+
+    # Ajoute les arguments
+    parser.add_argument("ip", type=str, help="L'adresse IP cible à scanner")
+    parser.add_argument("-p", "--ports", type=str, default="1-1024", help="La plage de ports à scanner (ex: '1-1024', '22,80,443')")
+
+    args = parser.parse_args()
+
+    target_ip = args.ip
+    port_range_str = args.ports
+
+    print(f"Scan de {target_ip} sur les ports : {port_range_str}")
+
+    # -- Logique pour parser la plage de ports --
+    ports_to_scan = []
+    if '-' in port_range_str:
+        # C'est une plage (ex: 1-1024)
+        start, end = map(int, port_range_str.split('-'))
+        ports_to_scan = range(start, end + 1)
+    else :
+        # C''eest une liste (ex : 22, 80, 443)
+        ports_to_scan = map(int, port_range_str.split(','))
+
+    # --- Lancement du scan ---
+    print("\nRésultats :")
+    for port in ports_to_scan:
+        # On appelle la fonction de la session 1 
+        check_port(target_ip, port)
+
 if __name__ == "__main__":
-    target_ip = "127.0.0.1"  # Ton propre PC (localhost)
-
-    print(f"Scan de {target_ip}...")
-
-    # Teste quelques ports
-    check_port(target_ip, 80)  # Port HTTP (probablement fermé)
-    check_port(target_ip, 443) # Port HTTPS (probablement fermé)
-    check_port(target_ip, 22)  # Port SSH (peut-être ouvert ?)
-
-    # Teste un site qui le permet
-    target_ip_public = "scanme.nmap.org"
-    print(f"\nScan de {target_ip_public}...")
-    check_port(target_ip_public, 22) # Devrait être ouvert
-    check_port(target_ip_public, 80) # Devrait être ouvert
-    check_port(target_ip_public, 81) # Devrait être fermé
+    main()
