@@ -3,9 +3,10 @@ import sys
 import argparse #biibliothèque pour la CLI
 from queue import Queue # Pour la file d'attente
 import threading # Pour les serveurs
+import csv
 
 # Variables globales
-open_ports = []
+open_ports_info = [] #stockera des (port, bannière)
 # Verrou pour sécuriser l'écriture dans la liste open_ports.
 list_lock = threading.Lock()
 
@@ -25,10 +26,38 @@ def check_port(ip,port):
     finally:
         sock.close()
 
+# Nouvelle fonction : grab_banner pour demander la bannière du port
+def grab_banner(ip,port):
+    """
+    Tente de récupérer la "bannière" d'un service sur un port ouvert.
+    """
+    try:
+        # On crée un socket comme dans check_port
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.settimeout(2.0) #on lui lasse 2s pour répondre
+            sock.connect((ip, port))
+
+            # On envoie des données factices pour provquer une réponse.
+            # Un 'GET' simple marche souvent pour les services web (HTTP).
+            # D'autres services (FTP, SSH) envoient la bannière dès la connexion.
+            sock.send(b'GET / HTTP/1.1\r\nHost: ' + ip.encode() + b'\r\n\r\n')
+
+            # On écoute la réponse (max 1024 bytes)
+            banner_bytes = sock.recv(1024)
+
+            # On décode la réponse en texte en ignorant les erreurs
+            banner_text = banner_bytes.decode(errors='ignore').strip()
+
+            # On ne garde que la première ligne pour que ce soit propre
+            return banner_text.split('\n')[0]
+    except Exception:
+        #Si ça échoue (port SSL, service muet, etc.), on renvoie "Inconnu"
+        return "Inconnu"
+    
 # Nouvelle fonction : le travailleur
 def worker(queue, ip):
     """
-    C'est la fonction que chaque thread va éxecuter. Elle prend un port dans la file, le scanna et recommence.
+    C'est la fonction que chaque thread va éxecuter. 
     """
 
     while not queue.empty():
@@ -36,10 +65,17 @@ def worker(queue, ip):
 
         # On scanne le port
         if check_port(ip, port):
-            # Si c'est ouvert on utilise le verrou pour écrire dans la liste
+            # Le port est ouvert ! On va chercher la bannière.
+            banner = grab_banner(ip, port)
+
             with list_lock:
-                print(f"[+] Port {port} (TCP) est Ouvert")
-                open_ports.append(port)
+                # On affiche direct pour avoir un retour
+                # On limite la bannière à 50 caractères pour l'affichage
+                print(f"[+] Port {port} Ouvert - Service : {banner[:50]}...")
+
+                # On stocke le TUPLE (port, bannière)
+                open_ports_info.append((port, banner))
+
         # On indique à la file que cette tâche est terminée.
         queue.task_done()
 
@@ -67,7 +103,7 @@ def main():
         start, end=map(int, port_range_str.split('-'))
         ports_to_scan = range(start, end+1)
     else:
-        ports_to_scan=map(int,port_range_str(','))
+        ports_to_scan=map(int,port_range_str.split(','))
 
     # Configuration et lancement du threading
     # Création de la file d'attente
@@ -91,15 +127,36 @@ def main():
     # Fin du scan
     print("\n--- Scan Terminé ---")
 
-    #On trie la lsite pour un affichage plus propre
-    open_ports.sort()
+    # On trie la liste par numéro de port (le premier élément du tuple)
+    open_ports_info.sort(key=lambda x: x[0])
 
-    if open_ports:
-        print("Ports ouverts trouvés:")
-        for port in open_ports:
-            print(f" Port{port} (TCP)")
-    else:
-        print("Aucun port ouvert trouvé")
+    # Affichage finale (on l'enlève on l'a déjà fait dans le worker)
+    # On peut garder un résumé si on veut, mais c'est optionnel car tout est affiché en direct.
+
+    if not open_ports_info:
+        print("Aucun port ouvert trouvé.")
+        sys.exit() # On quitte s'il n'y a rien à sauvegarder
+
+    #On fait une sauvegarde CSV
+    # On crée un nom de fichier dynamique
+    output_file = f"{target_ip}_scan_results.csv"
+    print(f"\nSauvegarde des résultats dans {output_file}...")
+
+    try:
+        with open(output_file, 'w', newline='') as f:
+            #Crée un écrivain CSV
+            writer = csv.writer(f)
+
+            #Écrit la ligne d'en-tête
+            writer.writerow(["Port", "Service/Bannière"])
+
+            # Écrit toutes nos données (la liste de tuples) d'un coup
+            writer.writerows(open_ports_info)
+        
+        print("Sauvegarde terminée.")
+    
+    except IOError as e:
+        print(f"Erreur lors de l'écriture du fichier CSV : {e}")
 
 if __name__ == "__main__":
     main()
